@@ -39,7 +39,7 @@ typedef struct __attribute__((packed)) {
 
 typedef struct {
     Cell_Data_t cells[3];
-    uint16_t I_target[3];
+    uint16_t balance_value[3];
     uint8_t rx_complete;
 } BMS_Manager_t;
 /* USER CODE END PTD */
@@ -93,23 +93,16 @@ uint32_t current_tick = 0;
  */
 
 uint8_t SOC_target = 0;
-uint16_t I_charge = 0;
-uint32_t pwm = 719;
 int16_t current = 0;
 uint8_t SOC_min = 0;
 
-uint16_t adc1,adc2;
-float Vin, Vout;
+float Vin;
 uint16_t pwm1=0;
 uint16_t adc_data[2] = {0};
 float Vmax = 22.0f;
-float Vmin ;
 uint8_t pwm_i=0;
-float V_lt=8;
 uint16_t i_c = 0;
-float max,min;
 uint8_t i=0;
-uint16_t adc1,adc2;
 float I_FIX = 0;
 int start=0;
 float v_offset;
@@ -223,28 +216,22 @@ void SendCellData()
 	uint8_t data_tx1[6] = {0};
 	uint8_t data_tx2[6] = {0};
 
-//	memcpy(&data_tx1[0], &bms1.I_target[0], 2);
-//	memcpy(&data_tx1[2], &bms1.I_target[1], 2);
-//	memcpy(&data_tx1[4], &bms1.I_target[2], 2);
-//
-//	memcpy(&data_tx2[0], &bms2.I_target[0], 2);
-//	memcpy(&data_tx2[2], &bms2.I_target[1], 2);
-//	memcpy(&data_tx2[4], &bms2.I_target[2], 2);
 	avg_v();
-	bms1.I_target[0] = avg_volt;
-	bms1.I_target[1] = min_v();
-	bms2.I_target[0] = bms1.I_target[0];
-	bms2.I_target[1] = bms1.I_target[1];
-	if (start==1) 	bms1.I_target[2] = 1;
-	else bms1.I_target[2] = 0;
-	bms2.I_target[2]=bms1.I_target[2];
-	memcpy(&data_tx1[0], &bms1.I_target[0], 2);
-	memcpy(&data_tx1[2], &bms1.I_target[1], 2);
-	memcpy(&data_tx1[4], &bms1.I_target[2], 2);
+	bms1.balance_value[0] = avg_volt;
+	bms1.balance_value[1] = min_v();
+	bms2.balance_value[0] = bms1.balance_value[0];
+	bms2.balance_value[1] = bms1.balance_value[1];
+	if (start==1) 	bms1.balance_value[2] = 1;
+	else bms1.balance_value[2] = 0;
+	bms2.balance_value[2]=bms1.balance_value[2];
 
-	memcpy(&data_tx2[0], &bms2.I_target[0], 2);
-	memcpy(&data_tx2[2], &bms2.I_target[1], 2);
-	memcpy(&data_tx2[4], &bms2.I_target[2], 2);
+	memcpy(&data_tx1[0], &bms1.balance_value[0], 2);
+	memcpy(&data_tx1[2], &bms1.balance_value[1], 2);
+	memcpy(&data_tx1[4], &bms1.balance_value[2], 2);
+
+	memcpy(&data_tx2[0], &bms2.balance_value[0], 2);
+	memcpy(&data_tx2[2], &bms2.balance_value[1], 2);
+	memcpy(&data_tx2[4], &bms2.balance_value[2], 2);
 	TxHeader.StdId = 0x10;
 	while(HAL_CAN_GetTxMailboxesFreeLevel(&hcan) == 0);
 	HAL_CAN_AddTxMessage(&hcan, &TxHeader, (uint8_t*)data_tx1, &TxMailBox);
@@ -291,48 +278,6 @@ void proccess_data(void)
         SOC_target = 80;
     }
 
-    float delta_Q =
-            (SOC_target - SOC_min)
-            * NOMINAL_Q_mAh/100.0f;
-
-    float t_charge =
-            delta_Q / I_charge;
-
-    for(uint8_t i=0;i<3;i++)
-    {
-        if(bms2.cells[i].soc >= SOC_target)
-        {
-            bms2.I_target[i] = 0;
-        }
-        else
-        {
-            delta_Q =
-                (SOC_target - bms2.cells[i].soc)
-                * NOMINAL_Q_mAh/100.0f;
-
-            bms2.I_target[i] =
-                delta_Q / t_charge;
-        }
-    }
-
-    bms2.rx_complete = 0;
-    for(uint8_t i=0;i<3;i++)
-       {
-           if(bms1.cells[i].soc >= SOC_target)
-           {
-               bms1.I_target[i] = 0;
-           }
-           else
-           {
-               delta_Q =
-                   (SOC_target - bms1.cells[i].soc)
-                   * NOMINAL_Q_mAh/100.0f;
-
-               bms1.I_target[i] =
-                   delta_Q / t_charge;
-           }
-       }
-
        bms1.rx_complete = 0;
     __enable_irq();
 }
@@ -343,42 +288,6 @@ void read_current(){
 	if (Vin < 19.5) current = (current- (uint16_t)v_offset)*43;
 	else current = (current- (uint16_t)v_offset)*41;
 }
-//
-//void INA219_Init(I2C_HandleTypeDef *hi2c)
-//{
-//    uint16_t config = 0x399F; // cấu hình phổ biến
-//    uint8_t data[2] = {0};
-//
-//    data[0] = (config >> 8) & 0xFF;
-//    data[1] = config & 0xFF;
-//
-//    HAL_I2C_Mem_Write(hi2c,0x40 << 1, 0x00, I2C_MEMADD_SIZE_8BIT, data, 2, 100);
-//}
-//
-//void INA219_Calibrate(I2C_HandleTypeDef *hi2c)
-//{
-//    uint16_t calib = 6922;
-//    uint8_t data[2] = {0};
-//
-//    data[0] = (calib >> 8) & 0xFF;
-//    data[1] = calib & 0xFF;
-//
-//    HAL_I2C_Mem_Write(hi2c, 0x40 << 1, 0x05, I2C_MEMADD_SIZE_8BIT, data, 2, 100);
-//}
-//
-//int16_t INA219_ReadRegister(I2C_HandleTypeDef *hi2c, uint8_t reg)
-//{
-//    uint8_t buffer[2] = {0};
-//    HAL_I2C_Mem_Read(hi2c, 0x40 << 1, reg, I2C_MEMADD_SIZE_8BIT, buffer, 2, 100);
-//
-//    return (int16_t)((buffer[0] << 8) | buffer[1]);
-//}
-//
-//int16_t INA219_ReadCurrent(I2C_HandleTypeDef *hi2c)
-//{
-//    int16_t raw_current = INA219_ReadRegister(hi2c, 0x04);
-//    return (raw_current * Current_LSB * 1000); // mA
-//}
 void Set_PWM1(float duty)
 {
     if(duty > 100) duty = 100;
@@ -392,36 +301,24 @@ void Set_PWM_to_i_charge(uint16_t i_ch){
 	if (i_slect > 3000) i_slect = 3000;
 	if (i_slect < 250) i_slect = 250;
 	  Vin = ((float)adc_data[0] * 3.2f / 4095.0f)*7.8f;//V
-//	  current = adc_data[1] * 32* 100/4095;//mV
-//	  current = (686 * current) / 100 + 250;//mA
 	  read_current();
 	Set_PWM1(pwm_i);
 	if ((current < (i_slect))&&(Vin < Vmax)){
-//		uint8_t m=0;
-//		while ((current < (i_slect))&&(Vin < Vmax)&&(m==0)){
 				pwm_i--;
 				if (pwm_i < 0) {
 					pwm_i = 0;
 				}
 				Set_PWM1(pwm_i);
 				HAL_Delay(10);
-//				  Vin = ((float)adc_data[0] * 3.2f / 4095.0f)*7.8f;//V
-//				  read_current();
-//			}
 	}
 	else if ((current > (i_slect))&&(Vin < Vmax))
 	{
-//		uint8_t m=0;
-//		while ((current > (i_slect))&&(Vin < Vmax)&&(m==0)){
 				pwm_i++;
 				Set_PWM1(pwm_i);
 				HAL_Delay(10);
 				if (pwm_i > 100) {
 					pwm_i = 100;
 				}
-//				  Vin = ((float)adc_data[0] * 3.2f / 4095.0f)*7.8f;//V
-//				  read_current();
-//			}
 	}
 	if (pwm_i > 100) pwm_i=100;
 	if (pwm_i < 0) pwm_i=0;
@@ -474,16 +371,6 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
-  /*
-   * Cấu hình cho cảm biến dòng
-   */
-//  INA219_Init(&hi2c1);
-//  INA219_Calibrate(&hi2c1);
-
-  /*
-   * Bắt đầu tạo xung pwm
-   */
-//  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 
   /*
    * Bắt đầu giao tiếp CAN
@@ -504,24 +391,13 @@ int main(void)
    */
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_data, sizeof(adc_data)/2);
 
-  /* Dữ liệu giả*/
-//  bms1.I_target[0] = 2340;
-//  bms1.I_target[1] = 2120;
-//  bms1.I_target[2] = 2430;
-//
-//  bms2.I_target[0] = 2000;
-//  bms2.I_target[1] = 2100;
-//  bms2.I_target[2] = 2150;
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
 
-//  Set_PWM1(80);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1){
-//	  HAL_UART_Receive_IT(&huart1, &rx, 1);
-//	  HAL_UART_Receive(&huart1, &rx, 2, 100);
 	  uint32_t now_time = HAL_GetTick();
 	  Vin = ((float)adc_data[0] * 3.2f / 4095.0f)*7.8f;//V
 	  v_offset = 2.667f * Vin -11.0f;
@@ -536,14 +412,6 @@ int main(void)
 	  i6[4]= bms2.cells[1].current;
 	  i6[5]= bms2.cells[2].current;
 
-//	  current = adc_data[1] * 3200/4095;//mV
-//
-//	  if (Vin < 19.5) current = (current- (uint16_t)v_offset)*43;
-//	  else current = (current- (uint16_t)v_offset)*41;
-
-
-//	  Set_PWM_to_i_charge(i_c);
-//	  Set_PWM1(pwm1);
 	  if (SOC_min < 80) Set_PWM_to_i_charge(I_charge);
 	  else if (SOC_min < 95) Set_PWM1(5);// cố định áp khi cell thấp nhất gần đầy
 	  else  start=0;
@@ -552,14 +420,6 @@ int main(void)
 		  HAL_Delay(10000);
 		  start = 0;
 	  }
-//	  i++;
-//	  if(current > max)  max = current;
-//	  if(current < min)  min = current;
-//	  if (i == 100) {
-//	  		  max = 0;
-//	  		  min = I_charge;
-//	  		  i=0;
-//	  	  }
 	  HAL_Delay(5);
 	  if (start == 1) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
 	  else HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
@@ -598,8 +458,6 @@ int main(void)
 	  		  SendCellData();
 	  		  can_tick = now_time;
 	  	  }
-//	  	  current = INA219_ReadCurrent(&hi2c1);
-//	  	  current = I_Filter(current);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

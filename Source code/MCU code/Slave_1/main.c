@@ -39,7 +39,7 @@ typedef struct __attribute__((packed)) {
 
 typedef struct {
     Cell_Data_t cells[3];
-    uint16_t I_target[3];
+    uint16_t balance_value[3];
     float total_Q_As[3];
 } BMS_Manager_t;
 
@@ -51,16 +51,8 @@ typedef struct {
 #define RX_DATA_SIZE	64		//Kích thước cần để cấp phát cho vùng nhớ data_rx
 #define DATA_SIZE		128		//Kích thước cần để cấp phát cho vùng nhớ data_tx
 #define NOMINAL_Q_mAh 	2500	//Dung lượng danh định của cell là 2500mAh
-#define R1_0 			26.66
-#define R2_0			9.91
-#define R1_1 			26.60
-#define R2_1			9.91
-#define R1_2 			26.68
-#define R2_2			9.96
-#define R0				10		//�?iện trở tại T0
 #define T0				298.15	//Nhiệt độ T0 = 25*C (T0 = 298.15K)
 #define R_FIXED			10		//�?iện trở của cầu phân áp cho NTC
-#define Current_LSB		0.0001f
 #define R_internal		0.05f	//Nội trở của pin
 
 /* USER CODE END PD */
@@ -158,12 +150,6 @@ uint16_t pwm[3]={0};
 uint16_t avg_volt,min_volt;
 int start=0;
 uint16_t v_offset[3];
-//uint16_t m1,m2,m3=0;
-//uint8_t mc1=0;
-//uint8_t mc2=0;
-//uint8_t mc3=0;
-//float v1,v2,v3;
-//int16_t i1,i2,i3;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -209,10 +195,10 @@ void Set_PWM3(float duty)
                          (uint16_t)(c * 1));
 }
 void volt_ctrol(uint8_t id){
-	if (bms.cells[id].voltage > (bms.I_target[0]+300)){
+	if (bms.cells[id].voltage > (bms.balance_value[0]+300)){
 		pwm[id] = 500;
 	}
-	if (bms.cells[id].voltage > (bms.I_target[0]+100)){
+	if (bms.cells[id].voltage > (bms.balance_value[0]+100)){
 		pwm[id] = 200;
 	}
 	if ( bms.cells[id].voltage > 3800){
@@ -233,11 +219,11 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef* hcan)
 	uint8_t data_rx[6] = {0};
 	if(HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, data_rx)== HAL_OK)
 	{
-			memcpy(&bms.I_target[0], &data_rx[0], 2);
-			memcpy(&bms.I_target[1], &data_rx[2], 2);
-			memcpy(&bms.I_target[2], &data_rx[4], 2);
+			memcpy(&bms.balance_value[0], &data_rx[0], 2);
+			memcpy(&bms.balance_value[1], &data_rx[2], 2);
+			memcpy(&bms.balance_value[2], &data_rx[4], 2);
 	}
-	if (bms.I_target[2]==1){
+	if (bms.balance_value[2]==1){
 	volt_ctrol(0);
 	volt_ctrol(1);
 	volt_ctrol(2);
@@ -287,7 +273,6 @@ void SOC_Init()
 	{
 		float I_A = (float)bms.cells[i].current/1000.0f;
 		float V_ocv = (bms.cells[i].voltage / 1000.0f);
-//				- I_A * R_internal;
 
 		soc_init[i] = SOC_From_Voltage(V_ocv);
 		soc_coulomb[i] = soc_init[i];
@@ -362,42 +347,6 @@ void NTC_Read_Temperature()
 		bms.cells[i].temp = Temperature_Function(R_NTC);
 	}
 }
-//
-//void INA219_Init(I2C_HandleTypeDef *hi2c, uint8_t Slave_Address)
-//{
-//    uint16_t config = 0x399F;
-//    uint8_t data[2] = {0};
-//
-//    data[0] = (config >> 8) & 0xFF;
-//    data[1] = config & 0xFF;
-//
-//    HAL_I2C_Mem_Write(hi2c,Slave_Address << 1, 0x00, I2C_MEMADD_SIZE_8BIT, data, 2, 100);
-//}
-//
-//void INA219_Calibrate(I2C_HandleTypeDef *hi2c, uint8_t Slave_Address)
-//{
-//    uint16_t calib = 6922;
-//    uint8_t data[2] = {0};
-//
-//    data[0] = (calib >> 8) & 0xFF;
-//    data[1] = calib & 0xFF;
-//
-//    HAL_I2C_Mem_Write(hi2c, Slave_Address << 1, 0x05, I2C_MEMADD_SIZE_8BIT, data, 2, 100);
-//}
-//
-//int16_t INA219_ReadRegister(I2C_HandleTypeDef *hi2c, uint8_t Slave_Address, uint8_t Reg_Address)
-//{
-//    uint8_t buffer[2] = {0};
-//    HAL_I2C_Mem_Read(hi2c, Slave_Address << 1, Reg_Address, I2C_MEMADD_SIZE_8BIT, buffer, 2, 100);
-//
-//    return (int16_t)((buffer[0] << 8) | buffer[1]);
-//}
-//
-//int16_t INA219_ReadCurrent(I2C_HandleTypeDef *hi2c, uint8_t Slave_Address)
-//{
-//    int16_t raw_current = INA219_ReadRegister(hi2c, Slave_Address, 0x04);
-//    return (raw_current * Current_LSB * 1000); // mA
-//}
 
 void SendCellData()
 {
@@ -527,13 +476,9 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-//	HAL_TIMEx_PWM_Start(&htim1, TIM_CHANNEL_2);
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
-  /*
-   * Cấu hình cho các cảm biến dòng
-   */
 
 
   /*
@@ -564,9 +509,6 @@ int main(void)
 
   start_time = HAL_GetTick();
   uint32_t cu_time = HAL_GetTick();
-  bms.cells[0].temp = 38;
-  bms.cells[1].temp = 37;
-  bms.cells[2].temp = 39;
   start =0;
   /* USER CODE END 2 */
 
@@ -586,11 +528,6 @@ int main(void)
 
 				Ix[2] =(adc_data[8] * 3200/4095)- v_offset[2];
 				bms.cells[2].current = (int16_t) ((float)Ix[2] * get_k3(Ix[2]));
-
-//				bms.cells[0].current = (adc_data[6] * 3200/4095)-v_offset[0];
-//				bms.cells[1].current = (adc_data[7] * 3200/4095)-v_offset[1];
-//				bms.cells[2].current = (adc_data[8] * 3200/4095)-v_offset[2];
-
 
 		 		  cu_time=HAL_GetTick();
 		 	  }
@@ -613,17 +550,6 @@ int main(void)
 
 		 		  avg_volt = avg(voltage[0], voltage[1], voltage[2]);
 		 		  min_volt = min_v(voltage[0], voltage[1], voltage[2]);
-		 //		  if ((start==1)&&(HAL_GetTick()-SAC_time>300)){
-		 //			  volt_ctrol(0);
-		 //			  volt_ctrol(1);
-		 //			  volt_ctrol(2);
-		 //			  SAC_time = HAL_GetTick();
-		 //		  }
-
-//				if(start==0){
-//
-//				start=1;
-//				}
 		 	  if(!soc_initialized)
 		 	  {
 		 		  static uint16_t stable_count = 0;
@@ -636,9 +562,6 @@ int main(void)
 		 				v_offset[0] =  (adc_data[6] * 3200/4095);
 		 				v_offset[1] =  (adc_data[7] * 3200/4095);
 		 				v_offset[2] =  adc_data[8] * 3200/4095;
-//		 			v_offset[0] =  ((adc_data[6] * 3200/4095)+v_offset[0])/2;
-//		 			v_offset[1] =  ((adc_data[7] * 3200/4095)+v_offset[1])/2;
-//		 			v_offset[2] =  ((adc_data[8] * 3200/4095)+v_offset[2])/2;
 		 		  }
 		 		  else {
 		 			  soc_initialized = 1;
@@ -649,46 +572,7 @@ int main(void)
 	   * Tính nhiệt độ thực của cell
 	   */
 	  NTC_Read_Temperature();
-
-	  /*
-	   * Thực hiện cân bằng cell pin
-	   */
-
-
-//
-//if ((bms.cells[0].current > 10)&&((HAL_GetTick()-SAC_time)>1500)){
-//	  if((bms.cells[0].temp >= 45) || (bms.cells[0].voltage>3800))
-//	  		  {
-//		      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
-//	  		  m1=1;
-//	  		  }
-//	  else {
-//		      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
-//	  		  m1=0;
-//	  		  }
-//  	  if(((bms.cells[1].temp >= 45 )|| (bms.cells[1].current > (int32_t)bms.I_target[1])||(bms.cells[1].voltage>3800))&&(bms.cells[1].voltage>2900))
-//	  	  	  {
-//		      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_SET);
-//
-//	  		  m2=1;
-//	  	  	  }
-//	  else {
-//		  	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_RESET);
-//	  		  m2=0;
-//	  		  }
-//	  if((bms.cells[2].temp >= 45) || (bms.cells[2].voltage>3800))
-//	  		  {
-//		      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET);
-//
-//	  		  m3=1;
-//	  		  }
-//	  else{
-//		  	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET);
-//	  		  m3=0;
-//	  		  }
-//
-//}
-
+    
 	  /*
 	   * Truy�?n dữ liệu gồm điện áp, dòng điện, dung lượng và nhiệt độ đến master.
 	   */
